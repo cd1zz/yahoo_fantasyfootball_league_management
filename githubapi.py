@@ -64,23 +64,3 @@ class GitHubAPI:
             pass
 
         return self._make_request("PUT", path, data)
-
-# Usage example
-'''
-if __name__ == '__main__':
-    owner = 'your_username'
-    repo = 'your_repo_name'
-    token = 'YOUR_PERSONAL_ACCESS_TOKEN'
-    
-    github_api = GitHubAPI(owner, repo, token)
-    
-    # Fetch existing file content
-    file_path = 'path_to_your_file.json'
-    json_data = github_api.get_file_content(file_path)
-    print(json_data)
-
-    # Post new content
-    new_content = {"key": "value"}
-    response = github_api.post_file_content(file_path, new_content, "Update content")
-    print(response)
-'''

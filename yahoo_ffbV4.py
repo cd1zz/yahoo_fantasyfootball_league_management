@@ -95,7 +95,6 @@ def matchup_results(game_id, headers, week_number, github_api):
     matchup_results = []
 
     team_data = github_api.get_file_content('teams_info.json')
-    #team_data = read_json_file('teams_info.json')
 
     for idx, team in enumerate(team_data, start=1):
         team_key = team["team_key"]
@@ -147,7 +146,6 @@ def matchup_results(game_id, headers, week_number, github_api):
 
     file_path = f'week_{week_number}_matchup.json'
     github_api.post_file_content(file_path, matchup_results, "Update matchup results.")
-    #write_json_file(outfile, matchup_results)
 
 def load_eliminated_teams(github_api):
     if DEBUG:
@@ -168,15 +166,6 @@ def load_eliminated_teams(github_api):
         else:
             print("[*] Unexpected data format in eliminated_teams.json.")
             return set()
-        
-def save_eliminated_teams(eliminated_teams):
-    if DEBUG:
-        print_function_name(inspect.currentframe().f_code.co_name)
-    
-    #with open('eliminated_teams.txt', 'w') as f:
-    #    for team in eliminated_teams:
-    #        f.write(team + '\n')
-
 
 def survivor_bonus(week_number, github_api):
     if DEBUG:
@@ -189,8 +178,6 @@ def survivor_bonus(week_number, github_api):
     
     else:
         survivor_bonus_data = response
-
-    #survivor_bonus_data = read_json_file('survivor_bonus.json')
     
     if survivor_bonus_data is None:
         survivor_bonus_data = []
@@ -244,17 +231,7 @@ def survivor_bonus(week_number, github_api):
             # Add the eliminated team to the set and save it
             eliminated_teams.add(lowest_team)
 
-    #for value in eliminated_teams:
-    #    print(value)
-
-    #input()
-    #save_eliminated_teams(eliminated_teams)
-    # Convert the eliminated_teams set to a list, and then to json. 
-
     eliminated_teams_json = json.dumps(list(eliminated_teams))
-    #print(eliminated_teams_json)
-    #input()
-
     github_api.post_file_content('eliminated_teams.json', eliminated_teams_json, "Update eliminated survivor teams.")
     github_api.post_file_content('survivor_bonus.json', survivor_bonus_data, "Update survivor_bonus.json")
 
@@ -262,9 +239,7 @@ def survivor_bonus(week_number, github_api):
         print(f"[!] No teams eliminated from survivor pool.")
 
     else:
-        print(f"[*] The team(s) with the lowest points in Week {week_number} is/are: {', '.join(lowest_teams)} with {lowest_points} points.")
-
-    
+        print(f"[*] The team(s) with the lowest points in Week {week_number} is/are: {', '.join(lowest_teams)} with {lowest_points} points.")   
 
 def get_team_info(game_id, headers, github_api):
     teams_info = []
@@ -290,16 +265,13 @@ def get_team_info(game_id, headers, github_api):
         teams_info.append(team_info)
 
     github_api.post_file_content('teams_info.json', teams_info, "Update team ids and names.")
-    #write_json_file('teams_info.json', teams_info)
-    return
-    #return response.json()
 
+    return
 
 def calculate_skins_winners(github_api):
     if DEBUG:
         print_function_name(inspect.currentframe().f_code.co_name)
 
-    #skins_winners = read_json_file('skins_winners.json')
     skins_winners = github_api.get_file_content('skins_winners.json')
 
     if skins_winners == 404:
@@ -358,16 +330,11 @@ def calculate_skins_winners(github_api):
             print(f"[*] Skins winner for week {week_number} {winning_team} by {potential_winners[winning_team]['margin_victory']}")
 
 
-
-    # Write the updated skins_winners to the JSON file
-    #write_json_file('skins_winners.json',skins_winners)
-
     github_api.post_file_content('skins_winners.json',skins_winners,"Update skins_winners.json")
 
 def write_json_file(filename, data):
     with open(filename, 'w') as f:
         json.dump(data, f, indent=4)
-
 
 def print_function_name(myfunction):
     header_line = "*"*40+myfunction+"*"*40
@@ -407,10 +374,6 @@ def main():
         print("[*] 404 getting teams_info.json. Retrieving...")
         get_team_info(game_id, headers, github_api)
 
-    # If the teams_info file doesn't exist, fetch the data
-    #if read_json_file("teams_info.json") is None:
-    #    get_team_info(game_id, headers)
-
     # Ask the user for the week number
     while True:  # This loop will keep asking until a valid input is given
         try:
@@ -423,12 +386,12 @@ def main():
             print('[!] Error. Please enter a valid integer for the week number.')
 
     week = str(week)
-    matchup_results(game_id, headers, week, github_api)
-    
+    matchup_results(game_id, headers, week, github_api)    
     survivor_bonus(week,github_api)
     print_survior_teams_eliminated(github_api)
     calculate_skins_winners(github_api)
     print("[*] Complete!")
+
 if __name__ == "__main__":
     main()
 
