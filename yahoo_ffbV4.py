@@ -89,7 +89,25 @@ def get_game_id(headers,github_api):
     get_new_oath_token()
     main()
 
-def matchup_results(game_id, headers, week_number, github_api):
+def matchup_results(headers, week_number, github_api):
+
+    # Check if we already did this
+    file_path = 'week_'+week_number+'_matchup.json'
+    response = github_api.get_file_content(file_path)
+
+    if response == 404:
+        pass
+    else:
+        while True:  # Keep looping until a valid answer is given
+            answer = input(f"[?] Week {week_number} already on git, process again (Y/n)?: ")
+            
+            if 'n' in answer.lower():
+                return
+            elif 'y' in answer.lower() or not answer:   # Check for 'y' or empty input
+                break   # This will exit the while loop and continue with the rest of the code
+            else:
+                print("[!] Enter y or n, or simply press enter for 'yes'.")
+ 
     print(f"\n{'-' * 40} Week {week_number} {'-' * 40}")
 
     matchup_results = []
@@ -269,68 +287,73 @@ def get_team_info(game_id, headers, github_api):
     return
 
 def calculate_skins_winners(github_api):
+    # If in DEBUG mode, print the function name for diagnostics.
     if DEBUG:
         print_function_name(inspect.currentframe().f_code.co_name)
 
+    # Fetch the content of the 'skins_winners.json' file.
     skins_winners = github_api.get_file_content('skins_winners.json')
-
+    
+    # If the file does not exist, initialize an empty dictionary.
     if skins_winners == 404:
         print("[*] 404 getting skins_winners.json. Created empty dict.")
         skins_winners = {}
 
+    # Initialize the pot for skins winner.
     current_pot = 0
 
-    # Iterate through the JSON files in the specified directory
+    # Iterate through the JSON files for each week's matchup.
     for week_number in range(1, 18):
         week_file = f"./week_{week_number}_matchup.json"
         matchup_results = github_api.get_file_content(week_file)
 
+        # Skip the week if matchup data isn't available.
         if matchup_results == 404:
-            #print(f"[*] Skipping week {week_number}, no matchup data.")
             continue
 
-        # Dictionary to track the potential winners for this week
+        # Dictionary to track potential winners for the week.
         potential_winners = {}
 
+        # Evaluate each matchup for the week.
         for matchup in matchup_results:
             winning_team = matchup['winning_team']
             margin_victory = float(matchup['margin_victory'])
 
-            if margin_victory >= 20:
-                if winning_team in potential_winners:
-                    if margin_victory > potential_winners[winning_team]['margin_victory']:
-                        # Update the margin of victory for the team
-                        potential_winners[winning_team]['margin_victory'] = margin_victory
-                else:
-                    # Add the team to potential winners
-                    potential_winners[winning_team] = {
-                        'margin_victory': margin_victory,
-                        'week_number': week_number
-                    }
+            # Skip teams with victory margins less than 20.
+            if margin_victory < 20:
+                continue
 
-        if potential_winners:
-            # Find the team with the largest margin of victory
-            winning_team = max(potential_winners, key=lambda team: potential_winners[team]['margin_victory'])
-
-            if winning_team in skins_winners:
-                # Update the margin of victory and week number for the team
-                skins_winners[winning_team]['margin_victory'] = potential_winners[winning_team]['margin_victory']
-                skins_winners[winning_team]['week_number'] = week_number
+            # Update the potential winners based on margin of victory.
+            if winning_team in potential_winners:
+                if margin_victory > potential_winners[winning_team]['margin_victory']:
+                    potential_winners[winning_team]['margin_victory'] = margin_victory
             else:
-                # Add the team to skins winners
-                skins_winners[winning_team] = {
-                    'margin_victory': potential_winners[winning_team]['margin_victory'],
-                    'week_number': week_number
-                }
+                potential_winners[winning_team] = {'margin_victory': margin_victory, 'week_number': week_number}
 
-            # Update the current pot for this week
-            current_pot += 10
-            skins_winners[winning_team]['pot_winnings'] = current_pot
+        # Skip the rest if there are no potential winners.
+        if not potential_winners:
+            continue
 
-            print(f"[*] Skins winner for week {week_number} {winning_team} by {potential_winners[winning_team]['margin_victory']}")
+        # Find the team with the highest margin of victory for the week.
+        winning_team = max(potential_winners, key=lambda team: potential_winners[team]['margin_victory'])
+        winning_margin = potential_winners[winning_team]['margin_victory']
 
+        # Initialize or update the team's data in the skins_winners dictionary.
+        if winning_team not in skins_winners:
+            skins_winners[winning_team] = {'margin_victory': 0}
 
-    github_api.post_file_content('skins_winners.json',skins_winners,"Update skins_winners.json")
+        skins_winners[winning_team]['margin_victory'] = winning_margin
+        skins_winners[winning_team]['week_number'] = week_number
+
+        # Update the current pot and assign to the winning team.
+        current_pot += 10
+        skins_winners[winning_team]['pot_winnings'] = current_pot
+
+        # Display the winner for the week.
+        print(f"[*] Skins winner for week {week_number} {winning_team} by {round(winning_margin, 2)}")
+
+    # Post the updated winners data back to GitHub.
+    github_api.post_file_content('skins_winners.json', skins_winners, "Update skins_winners.json")
 
 def write_json_file(filename, data):
     with open(filename, 'w') as f:
@@ -386,7 +409,7 @@ def main():
             print('[!] Error. Please enter a valid integer for the week number.')
 
     week = str(week)
-    matchup_results(game_id, headers, week, github_api)    
+    matchup_results(headers, week, github_api)    
     survivor_bonus(week,github_api)
     print_survior_teams_eliminated(github_api)
     calculate_skins_winners(github_api)
