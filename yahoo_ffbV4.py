@@ -390,7 +390,7 @@ def main():
     survivor_bonus(week,github_api)
     print_survior_teams_eliminated(github_api)
     calculate_skins_winners(github_api)
-    print("[*] Complete!")
+    print("[*] Complete!") 
 
 if __name__ == "__main__":
     main()
