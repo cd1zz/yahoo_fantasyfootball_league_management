@@ -41,12 +41,10 @@ def get_new_oath_token():
     # Close the session when done
     yahoo.close()
 
-    headers = {
-        'Authorization': f'Bearer {token["access_token"]}',  # Include the access token in the Authorization header
+    headers = {'Authorization': f'Bearer {token["access_token"]}',  # Include the access token in the Authorization header
     }
     
-    with open('access_token.json', 'w') as f:
-        json.dump(headers, f)
+    write_json_file('/tmp/access_token.json',headers)
     
     return headers
 
@@ -385,7 +383,7 @@ def main():
     
     github_api = GitHubAPI(owner, repo, token)
 
-    headers = read_json_file('access_token.json')
+    headers = read_json_file('/tmp/access_token.json')
     if headers is None:
         headers = get_new_oath_token()
 
