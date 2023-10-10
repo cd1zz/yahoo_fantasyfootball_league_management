@@ -380,8 +380,8 @@ def main():
         print_function_name(inspect.currentframe().f_code.co_name)
 
     owner = 'cd1zz'
-    repo = 'ffb'
-    token = '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'
+    repo = 'ffbstorage'
+    token = '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'
     
     github_api = GitHubAPI(owner, repo, token)
 
