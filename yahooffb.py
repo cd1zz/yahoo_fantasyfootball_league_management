@@ -9,8 +9,18 @@ from githubapi import GitHubAPI
 
 # Global Constants
 BASE_URL = 'https://fantasysports.yahooapis.com/fantasy/v2'
-CLIENT_ID = 'dj0yJmk9M2ZVMmZWVzkyQVdoJmQ9WVdrOU5rdzJObkV6VVZNbWNHbzlNQT09JnM9Y29uc3VtZXJzZWNyZXQmc3Y9MCZ4PWQ5' #AKA Consumer Key
-CLIENT_SECRET = '5811fc285d6da54cd9b07e5bec1d9a39b4e80128' #AKA Consumer Secret'
+
+# Load our secret tokens from environment variables/
+try:
+    CLIENT_ID = os.environ['YAHOO_CLIENT_ID'] #AKA Consumer Key
+except KeyError:
+    raise EnvironmentError("[!] The environment variable YAHOO_CLIENT_ID is not set. Also known as the 'Consumer Key.'")
+
+try:
+    CLIENT_SECRET = os.environ['YAHOO_CLIENT_SECRET'] #AKA Consumer Secret'
+except KeyError:
+    raise EnvironmentError("[!] The environment variable YAHOO_CLIENT_SECRET is not set. Also known as the 'Consumer Secret.'")
+
 REDIRECT_URI = 'oob'
 SCOPE = 'fspt-r'
 DEBUG = False
@@ -88,101 +98,118 @@ def get_game_id(headers,github_api):
     main()
 
 def matchup_results(headers, week_number, github_api):
+    
+    weeks_to_process = range(1, 14) if week_number == 'a' else [int(week_number)]
+    
+    for week in weeks_to_process:
+        # Check if we already did this
+        file_path = f'week_{week}_matchup.json'
+        response = github_api.get_file_content(file_path)
 
-    # Check if we already did this
-    file_path = 'week_'+week_number+'_matchup.json'
-    response = github_api.get_file_content(file_path)
+        process_current_week = True  # Flag to indicate whether to process the current week
+        
+        
+        if response == 404:
+            answer = 'y'
+            pass
+        else:
+            while True:  # Keep looping until a valid answer is given
+                answer = input(f"[?] Week {week} already on git, process again (Y/n)?: ")
+                
+                if 'n' in answer.lower():
+                    process_current_week = False  # Set flag to false if user enters 'n'
+                    break  # Exit the while loop
+                elif 'y' in answer.lower() or not answer:  # Check for 'y' or empty input
+                    answer = 'y'
+                    break  # This will exit the while loop and continue with the rest of the code
+                else:
+                    print("[!] Enter y or n, or simply press enter for 'yes'.")
+        
+        if not process_current_week:
+            continue
 
-    if response == 404:
-        pass
-    else:
-        while True:  # Keep looping until a valid answer is given
-            answer = input(f"[?] Week {week_number} already on git, process again (Y/n)?: ")
-            
-            if 'n' in answer.lower():
-                return
-            elif 'y' in answer.lower() or not answer:   # Check for 'y' or empty input
-                break   # This will exit the while loop and continue with the rest of the code
-            else:
-                print("[!] Enter y or n, or simply press enter for 'yes'.")
- 
-    print(f"\n{'-' * 40} Week {week_number} {'-' * 40}")
+        print(f"\n{'-' * 40} Week {week} {'-' * 40}")
+        
+        matchup_results = []
+        
+        team_data = github_api.get_file_content('teams_info.json')
+        
+        for idx, team in enumerate(team_data, start=1):
+            team_key = team["team_key"]
+            team_name = team["team_name"]
 
-    matchup_results = []
+            url = f'{BASE_URL}/team/{team_key}/matchups'
+            response = requests.get(url, headers=headers, params={'format': 'json'})
+            try:
+                post_event = response.json()["fantasy_content"]["team"][1]["matchups"][str(int(week)-1)]["matchup"]["status"]
+            except KeyError:
+                print(json.dumps(response.json(), indent=4))
+                raise KeyError(f"[!] KeyError for json.")
 
-    team_data = github_api.get_file_content('teams_info.json')
+            if post_event != 'postevent':
+                print(f"[!] Week {week} is not over yet. Exiting loop. Status: {post_event}")
+                answer = 'n'
+                break
 
-    for idx, team in enumerate(team_data, start=1):
-        team_key = team["team_key"]
-        team_name = team["team_name"]
+            team_points = response.json()["fantasy_content"]["team"][1]["matchups"][str(int(week)-1)]["matchup"]["0"]["teams"]["0"]["team"][1]["team_points"]["total"]
+            opponent_points = response.json()["fantasy_content"]["team"][1]["matchups"][str(int(week)-1)]["matchup"]["0"]["teams"]["1"]["team"][1]["team_points"]["total"]
+            opponent_name = response.json()["fantasy_content"]["team"][1]["matchups"][str(int(week)-1)]["matchup"]["0"]["teams"]["1"]["team"][0][2]["name"]
 
-        url = f'https://fantasysports.yahooapis.com/fantasy/v2/team/{team_key}/matchups'
-        response = requests.get(url, headers=headers, params={'format': 'json'})
-        post_event = response.json()["fantasy_content"]["team"][1]["matchups"][str(int(week_number)-1)]["matchup"]["status"]
+            team_exists = any(matchup['team_name'] == team_name or matchup['opponent_name'] == team_name for matchup in matchup_results)
+            opponent_exists = any(matchup['team_name'] == opponent_name or matchup['opponent_name'] == opponent_name for matchup in matchup_results)
 
-        if post_event != 'postevent':
-            print(f"[!] Week {week_number} is not over yet. Exiting loop. Status: {post_event}")
-            break
+            if not team_exists and not opponent_exists:
+                if float(team_points) > float(opponent_points):
+                    difference = float(team_points) - float(opponent_points)
+                    margin = str(round(difference, 2))
+                    print(f"\033[32m{team_name} {team_points}\033[0m vs {opponent_name} {opponent_points}\n---> {team_name} wins by: {margin}\n")
+                    winning_team = team_name
+                elif float(opponent_points) > float(team_points):
+                    difference = float(opponent_points) - float(team_points)
+                    margin = str(round(difference, 2))
+                    print(f"\033[32m{opponent_name} {opponent_points}\033[0m vs {team_name} {team_points}\n---> {opponent_name} wins by: {margin}\n")
+                    winning_team = opponent_name
+                else:
+                    print(f"\033[31m{team_name} {team_points} vs {opponent_name} {opponent_points}\033[0m\n")
+                    margin = "tie"
+                    winning_team = "tie"
 
-        team_points = response.json()["fantasy_content"]["team"][1]["matchups"][str(int(week_number)-1)]["matchup"]["0"]["teams"]["0"]["team"][1]["team_points"]["total"]
-        opponent_points = response.json()["fantasy_content"]["team"][1]["matchups"][str(int(week_number)-1)]["matchup"]["0"]["teams"]["1"]["team"][1]["team_points"]["total"]
-        opponent_name = response.json()["fantasy_content"]["team"][1]["matchups"][str(int(week_number)-1)]["matchup"]["0"]["teams"]["1"]["team"][0][2]["name"]
+                matchup = {
+                    "team_key": team_key,
+                    "team_name": team_name,
+                    "week": str(week),
+                    "team_points": team_points,
+                    "opponent_points": opponent_points,
+                    "opponent_name": opponent_name,
+                    "margin_victory": margin,
+                    "winning_team": winning_team
+                }
 
-        team_exists = any(matchup['team_name'] == team_name or matchup['opponent_name'] == team_name for matchup in matchup_results)
-        opponent_exists = any(matchup['team_name'] == opponent_name or matchup['opponent_name'] == opponent_name for matchup in matchup_results)
+                matchup_results.append(matchup)
 
-        if not team_exists and not opponent_exists:
-            if float(team_points) > float(opponent_points):
-                difference = float(team_points) - float(opponent_points)
-                margin = str(round(difference, 2))
-                print(f"\033[32m{team_name} {team_points}\033[0m vs {opponent_name} {opponent_points}\n---> {team_name} wins by: {margin}\n")
-                winning_team = team_name
-            elif float(opponent_points) > float(team_points):
-                difference = float(opponent_points) - float(team_points)
-                margin = str(round(difference, 2))
-                print(f"\033[32m{opponent_name} {opponent_points}\033[0m vs {team_name} {team_points}\n---> {opponent_name} wins by: {margin}\n")
-                winning_team = opponent_name
-            else:
-                print(f"\033[31m{team_name} {team_points} vs {opponent_name} {opponent_points}\033[0m\n")
-                margin = "tie"
-                winning_team = "tie"
-
-            matchup = {
-                "team_key": team_key,
-                "team_name": team_name,
-                "week": week_number,
-                "team_points": team_points,
-                "opponent_points": opponent_points,
-                "opponent_name": opponent_name,
-                "margin_victory": margin,
-                "winning_team": winning_team
-            }
-
-            matchup_results.append(matchup)
-
-    file_path = f'week_{week_number}_matchup.json'
-    github_api.post_file_content(file_path, matchup_results, "Update matchup results.")
+        if 'y' in answer.lower():
+            file_path = f'week_{week}_matchup.json'
+            github_api.post_file_content(file_path, matchup_results, "Update matchup results.")
 
 def load_eliminated_teams(github_api):
     if DEBUG:
         print_function_name(inspect.currentframe().f_code.co_name)
 
-    response = github_api.get_file_content('eliminated_teams.json')
+    survivor_results = github_api.get_file_content('survivor_bonus.json')
 
-    if response == 404:
-        print("[*] 404 on eliminated_teams.json. Creating empty set().")
+    if survivor_results == 404:
+        print("[*] 404 on survivor_bonus.json. Creating empty set().")
+        time.sleep(5)
         return set()
     else:
+        losing_team_names = set()
         # Parse the JSON string
-        teams = json.loads(response)
         
-        # Ensure teams is a list before converting to a set
-        if isinstance(teams, list):
-            return set(teams)
-        else:
-            print("[*] Unexpected data format in eliminated_teams.json.")
-            return set()
+        for team in survivor_results:
+            losing_team_names.add(team['losing_team_name'])
 
+        return losing_team_names
+    
 def survivor_bonus(week_number, github_api):
     if DEBUG:
         print_function_name(inspect.currentframe().f_code.co_name)
@@ -190,72 +217,76 @@ def survivor_bonus(week_number, github_api):
     response = github_api.get_file_content('survivor_bonus.json')
 
     if response == 404:
-        survivor_bonus_data = None
+        survivor_bonus_data = []
     
     else:
         survivor_bonus_data = response
-    
-    if survivor_bonus_data is None:
-        survivor_bonus_data = []
-
-    # Open the week_{}_matchup.json file for the specified week
-    week_matchup_file = f'week_{week_number}_matchup.json'
-    matchup_results = github_api.get_file_content(week_matchup_file)
 
     # Load the eliminated teams from the file
     eliminated_teams = load_eliminated_teams(github_api)
 
-    # Find the lowest points among all teams
-    lowest_points = float('inf')  # Initialize with a very high value
+    if week_number == 'a':
+        weeks = list(range(1,14))
+    
+    else:
+        weeks = [week_number]
 
-    for matchup in matchup_results:
-        week_exists = any(item["week_eliminated"] == week_number for item in survivor_bonus_data)
+    for week_number in weeks:
+        # Open the week_{}_matchup.json file for the specified week
+        week_matchup_file = f'week_{week_number}_matchup.json'
+        matchup_results = github_api.get_file_content(week_matchup_file)
 
-        # Skip if we already have an entry
-        if week_exists:
-            continue
-        else:
-            pass
+        # Check if matchup_results is an integer (possibly a HTTP status code)
+        if isinstance(matchup_results, int):
+            print(f"[!] Week {week_number} data could not be loaded. Status code: {matchup_results}")
+            continue  # Skip to the next iteration of the loop
 
-        team_name = matchup['team_name']
-        team_points = float(matchup['team_points'])
+        # Find the lowest points among all teams
+        lowest_points = float('inf')  # Initialize with a very high value
 
-        # Skip eliminated teams
-        if team_name in eliminated_teams:
-            continue
+        for matchup in matchup_results:
 
-        if team_points < lowest_points:
-            lowest_points = team_points
+            week_exists = any(item["week_eliminated"] == week_number for item in survivor_bonus_data)
 
-    # Identify all teams with the lowest points
-    lowest_teams = [matchup['team_name'] for matchup in matchup_results if float(matchup['team_points']) == lowest_points]
+            # Skip if we already have an entry
+            if week_exists:
+                continue
+            else:
+                pass
 
-    for lowest_team in lowest_teams:
-        # Check if the losing team is already in survivor_bonus_data
-        losing_team_exists = any(item['losing_team_name'] == lowest_team for item in survivor_bonus_data)
+            team_name = matchup['team_name']
+            team_points = float(matchup['team_points'])
+            # Skip eliminated teams
+            if team_name in eliminated_teams:
+                continue
 
-        if not losing_team_exists:
-            # Create a dictionary for the team with the lowest points
-            lowest_team_info = {
-                "losing_team_name": lowest_team,
-                "lowest_points": lowest_points,
-                "week_eliminated": week_number
-            }
+            if team_points < lowest_points:
+                lowest_points = team_points
 
-            survivor_bonus_data.append(lowest_team_info)
+        # Identify all teams with the lowest points
+        lowest_teams = [matchup['team_name'] for matchup in matchup_results if float(matchup['team_points']) == lowest_points]
 
-            # Add the eliminated team to the set and save it
-            eliminated_teams.add(lowest_team)
+        for lowest_team in lowest_teams:
+            # Check if the losing team is already in survivor_bonus_data
+            losing_team_exists = any(item['losing_team_name'] == lowest_team for item in survivor_bonus_data)
 
-    eliminated_teams_json = json.dumps(list(eliminated_teams))
-    github_api.post_file_content('eliminated_teams.json', eliminated_teams_json, "Update eliminated survivor teams.")
+            if not losing_team_exists:
+                # Create a dictionary for the team with the lowest points
+                lowest_team_info = {
+                    "losing_team_name": lowest_team,
+                    "lowest_points": lowest_points,
+                    "week_eliminated": week_number
+                }
+
+                survivor_bonus_data.append(lowest_team_info)
+
+                # Add the eliminated team to the set and save it
+                eliminated_teams.add(lowest_team)
+
     github_api.post_file_content('survivor_bonus.json', survivor_bonus_data, "Update survivor_bonus.json")
 
     if lowest_points > 10000:
         print(f"[!] No teams eliminated from survivor pool.")
-
-    else:
-        print(f"[*] The team(s) with the lowest points in Week {week_number} is/are: {', '.join(lowest_teams)} with {lowest_points} points.")   
 
 def get_team_info(game_id, headers, github_api):
     teams_info = []
@@ -263,7 +294,7 @@ def get_team_info(game_id, headers, github_api):
     for team_index in range(1, 13):
         team_key = f'{game_id}.l.254783.t.{team_index}'
         print(f"[*] Found team key: {team_key}")
-        url = f'https://fantasysports.yahooapis.com/fantasy/v2/team/{team_key}/matchups'
+        url = f'{BASE_URL}/team/{team_key}/matchups'
         response = requests.get(url, headers=headers, params={'format': 'json'})
         json_data = response.json()
 
@@ -285,6 +316,7 @@ def get_team_info(game_id, headers, github_api):
     return
 
 def calculate_skins_winners(github_api):
+    print_function_name(' Skins Results ')
     # If in DEBUG mode, print the function name for diagnostics.
     if DEBUG:
         print_function_name(inspect.currentframe().f_code.co_name)
@@ -363,6 +395,7 @@ def print_function_name(myfunction):
 
 def print_survior_teams_eliminated(github_api):
     
+    print_function_name(' Survivor Results ')
     eliminated_teams = github_api.get_file_content('survivor_bonus.json')
     if eliminated_teams == 404:
         print("[*] 404 getting surivor_bonus.json. Sleeping 5 seconds.")
@@ -377,9 +410,14 @@ def main():
     if DEBUG:
         print_function_name(inspect.currentframe().f_code.co_name)
 
+    # Github settings to post json files to ffbstorage for centralized data storage
     owner = 'cd1zz'
     repo = 'ffbstorage'
-    token = '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'
+
+    try:
+        token = os.environ['GITHUB_TOKEN']
+    except KeyError:
+        raise EnvironmentError("[!] The environment variable GITHUB_TOKEN is not set. This is the personal access token from github.")
     
     github_api = GitHubAPI(owner, repo, token)
 
@@ -397,17 +435,23 @@ def main():
 
     # Ask the user for the week number
     while True:  # This loop will keep asking until a valid input is given
+        user_input = input("[?] Enter the week # or 'a' for all (weeks 1-13): ")
         try:
-            week = int(input("[?] Enter the week #: "))  # This line can throw a ValueError
-            if 1 <= week <= 17:
+            week = int(user_input)  # This line can throw a ValueError
+            if 1 <= week <= 13:
                 break  # Exit the loop if the input is valid
             else:
                 print('[!] Error. Weeks should be 1 - 17 only.')
         except ValueError:
-            print('[!] Error. Please enter a valid integer for the week number.')
+            if user_input.lower() == 'a':  # Allow 'a' or 'A' for all weeks
+                week = 'a'
+                break
+            else:
+                print('[!] Error. Please enter a valid integer for the week number or \'a\' for all.')
+
 
     week = str(week)
-    matchup_results(headers, week, github_api)    
+    matchup_results(headers, week, github_api)
     survivor_bonus(week,github_api)
     print_survior_teams_eliminated(github_api)
     calculate_skins_winners(github_api)
