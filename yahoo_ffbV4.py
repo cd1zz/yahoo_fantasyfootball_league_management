@@ -136,12 +136,12 @@ def matchup_results(headers, week_number, github_api):
         if not team_exists and not opponent_exists:
             if float(team_points) > float(opponent_points):
                 difference = float(team_points) - float(opponent_points)
-                margin = str(difference)
+                margin = str(round(difference, 2))
                 print(f"\033[32m{team_name} {team_points}\033[0m vs {opponent_name} {opponent_points}\n---> {team_name} wins by: {margin}\n")
                 winning_team = team_name
             elif float(opponent_points) > float(team_points):
                 difference = float(opponent_points) - float(team_points)
-                margin = str(difference)
+                margin = str(round(difference, 2))
                 print(f"\033[32m{opponent_name} {opponent_points}\033[0m vs {team_name} {team_points}\n---> {opponent_name} wins by: {margin}\n")
                 winning_team = opponent_name
             else:
