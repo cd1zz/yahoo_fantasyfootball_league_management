@@ -330,7 +330,7 @@ def calculate_skins_winners(github_api):
         skins_winners = {}
 
     # Initialize the pot for skins winner.
-    current_pot = 0
+    current_pot = 10  # Initial pot value
 
     # Iterate through the JSON files for each week's matchup.
     for week_number in range(1, 18):
@@ -362,6 +362,7 @@ def calculate_skins_winners(github_api):
 
         # Skip the rest if there are no potential winners.
         if not potential_winners:
+            current_pot += 10  # Increase the pot if there's no winner
             continue
 
         # Find the team with the highest margin of victory for the week.
@@ -375,15 +376,16 @@ def calculate_skins_winners(github_api):
         skins_winners[winning_team]['margin_victory'] = winning_margin
         skins_winners[winning_team]['week_number'] = week_number
 
-        # Update the current pot and assign to the winning team.
-        current_pot += 10
+        # Assign the current pot to the winning team and reset the pot.
         skins_winners[winning_team]['pot_winnings'] = current_pot
+        current_pot = 10  # Reset the pot value
 
         # Display the winner for the week.
         print(f"[*] Skins winner for week {week_number} {winning_team} by {round(winning_margin, 2)}")
 
     # Post the updated winners data back to GitHub.
     github_api.post_file_content('skins_winners.json', skins_winners, "Update skins_winners.json")
+
 
 def write_json_file(filename, data):
     with open(filename, 'w') as f:
