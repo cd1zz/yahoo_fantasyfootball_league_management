@@ -438,7 +438,21 @@ def print_survior_teams_eliminated(github_api):
 
     for team in eliminated_teams:
         print(
-            f"[*] Surivor bonus team eliminated for week {team['week_eliminated']} {team['losing_team_name']} with {team['lowest_points']}.")
+            f"[*] Surivor bonus team eliminated for week {team['week_eliminated']} {team['losing_team_name']} with {team['lowest_points']}."
+        )
+    # JSON data for the first file (teams)
+    teams_data = github_api.get_file_content('teams_info.json')
+
+    # Extract team names from both datasets
+    team_names = set(team["team_name"] for team in teams_data)
+    eliminated_team_names = set(team["losing_team_name"]
+                                for team in eliminated_teams)
+
+    # Find teams in the first file but not in the second
+    teams_not_eliminated = team_names - eliminated_team_names
+
+    # Print the result
+    print("[*] Survivor teams still alive:", teams_not_eliminated)
 
 
 def main():
