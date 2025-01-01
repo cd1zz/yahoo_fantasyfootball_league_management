@@ -235,13 +235,17 @@ def survivor_bonus_process_season(weekly_data, github_api):
     print_function_name('Survivor Results')
 
     teams_info = github_api.get_file_content('teams_info.json')
+    if isinstance(teams_info, int):
+        print("[!] Error: Could not retrieve teams_info.json")
+        return
 
     # Initialize a set with all team keys at the start of the season
     active_teams = {team['team_key'] for team in teams_info}
 
     # Process each week
     for week in weekly_data:
-        #print(f"\n[Debug] Week {week[0]['week']} - Active teams before elimination: {len(active_teams)}")
+        if not week:  # Skip empty weeks
+            continue
 
         # Collect scores for all active teams
         team_scores = {}
@@ -251,32 +255,25 @@ def survivor_bonus_process_season(weekly_data, github_api):
             if matchup['opponent_team_key'] in active_teams:
                 team_scores[matchup['opponent_team_key']] = float(matchup['opponent_points'])
 
-        # Debugging: Print team scores
-        #print(f"[Debug] Week {week[0]['week']} team scores: {team_scores}")
-
         # Skip the week if no active teams remain
         if not team_scores:
-            #print(f"[Debug] Week {week[0]['week']} - No active teams to process.")
             continue
 
         # Find the team with the lowest score for the week
         lowest_scoring_team = min(team_scores, key=team_scores.get)
-        lowest_scoring_team_name = [team['team_name'] for team in teams_info if team['team_key'] == lowest_scoring_team][0]
+        lowest_scoring_team_name = next(team['team_name'] for team in teams_info if team['team_key'] == lowest_scoring_team)
         lowest_scoring_team_points = team_scores[lowest_scoring_team]
 
         # Eliminate the lowest scoring team from the active teams
         active_teams.remove(lowest_scoring_team)
         print(f"[*] Survivor bonus week {week[0]['week']} eliminated {lowest_scoring_team_name} with {lowest_scoring_team_points} points.")
-        #print(f'Remaining teams: {active_teams}')
 
         # Check if we have a winner
         if len(active_teams) == 1:
-            team_key_to_name = {team['team_key']: team['team_name'] for team in teams_info}
             winner_key = next(iter(active_teams))
-            winner_name = team_key_to_name.get(winner_key, "Unknown Team")
+            winner_name = next(team['team_name'] for team in teams_info if team['team_key'] == winner_key)
             print(f"[+] Survivor bonus winner: {winner_name}!")
             break
-
 def get_team_info(game_id, headers, github_api):
     LEAGUE_ID = "410864"  # Ulster Nation XIV
     teams_info = []
@@ -315,6 +312,7 @@ def get_team_info(game_id, headers, github_api):
             continue
 
     if teams_info:
+        print("[*] Posting teams_info.json")
         github_api.post_file_content('teams_info.json', teams_info, "Update team ids and names.")
         return teams_info
     return None
