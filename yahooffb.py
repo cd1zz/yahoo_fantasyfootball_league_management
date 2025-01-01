@@ -292,10 +292,12 @@ def survivor_bonus_process_season(weekly_data, github_api):
             break
 
 def get_team_info(game_id, headers, github_api):
+    LEAGUE_ID = "410864"  # Ulster Nation XIV
     teams_info = []
-    print("[+] Pulling individual team key values.")
+    print("[+] Pulling individual team key values for Ulster Nation XIV")
+    
     for team_index in range(1, 13):
-        team_key = f'{game_id}.l.254783.t.{team_index}'
+        team_key = f'{game_id}.l.{LEAGUE_ID}.t.{team_index}'
         print(f"[*] Found team key: {team_key}")
         url = f'{BASE_URL}/team/{team_key}/matchups'
         response = requests.get(url, headers=headers, params={'format': 'json'})
@@ -306,20 +308,6 @@ def get_team_info(game_id, headers, github_api):
                 print(f"[!] API request failed with status code: {response.status_code}")
                 print("[*] Response content:")
                 print(json.dumps(json_data, indent=2))
-                continue
-
-            # Debug output if fantasy_content key is missing
-            if 'fantasy_content' not in json_data:
-                print("[!] Error: 'fantasy_content' key not found in response")
-                print("[*] Full response content:")
-                print(json.dumps(json_data, indent=2))
-                
-                # Check if we got an error response
-                if 'error' in json_data:
-                    print(f"[!] API Error: {json_data['error']['description']}")
-                    if 'Invalid access token' in str(json_data):
-                        print("[*] Token may have expired. Try getting a new token.")
-                        return None
                 continue
 
             team_data = json_data["fantasy_content"]["team"][0]
@@ -334,19 +322,14 @@ def get_team_info(game_id, headers, github_api):
             }
 
             teams_info.append(team_info)
+            print(f"[+] Successfully added {team_name}")
 
-        except KeyError as e:
-            print(f"[!] KeyError accessing data: {e}")
-            print("[*] Response content:")
-            print(json.dumps(json_data, indent=2))
-            continue
         except Exception as e:
-            print(f"[!] Unexpected error: {e}")
+            print(f"[!] Error processing team {team_index}: {str(e)}")
             continue
 
     if teams_info:
-        github_api.post_file_content(
-            'teams_info.json', teams_info, "Update team ids and names.")
+        github_api.post_file_content('teams_info.json', teams_info, "Update team ids and names.")
         return teams_info
     return None
 
