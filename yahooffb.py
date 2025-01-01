@@ -402,7 +402,6 @@ def print_function_name(myfunction):
 
 
 def main():
-    # Github settings
     owner = 'cd1zz'
     repo = 'ffbstorage'
 
@@ -417,20 +416,22 @@ def main():
     if headers is None:
         headers = get_new_oauth_token()
     
-    # Verify league access before proceeding
+    # Verify league access
     if not verify_league_access(headers):
-        print("[!] Unable to access league. Please verify:")
-        print("1. OAuth scope includes 'fspt-r'")
-        print("2. Access token is valid")
-        print("3. User has access to league 254783")
+        print("[!] Unable to access league")
         return
 
-    # Get the game ID and team info
+    # Get game ID and team info
     game_id = get_game_id(headers, github_api)
-    response = github_api.get_file_content("teams_info.json")
-    if response == 404:
-        print("[*] 404 getting teams_info.json. Retrieving...")
-        get_team_info(game_id, headers, github_api)
+    teams_info = get_team_info(game_id, headers, github_api)
+    
+    # Verify teams_info was retrieved and saved
+    if teams_info is None:
+        print("[!] Failed to get team info")
+        return
+        
+    # Store teams_info in memory for use by other functions
+    github_api.cached_teams_info = teams_info
 
     # Week input handling
     while True:
@@ -439,7 +440,7 @@ def main():
             week = int(user_input)
             if 1 <= week <= 13:
                 break
-            print('[!] Error. Weeks should be 1 - 17 only.')
+            print('[!] Error. Weeks should be 1 - 13 only.')
         except ValueError:
             if user_input.lower() == 'a':
                 week = 'a'
@@ -453,5 +454,6 @@ def main():
     all_matchup_data = survivor_bonus_gather_data(github_api)
     survivor_bonus_process_season(all_matchup_data, github_api)
     print("[*] Complete!")
+    
 if __name__ == "__main__":
     main()
