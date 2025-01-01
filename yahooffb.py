@@ -116,112 +116,98 @@ def get_game_id(headers, github_api):
 
 
 def matchup_results(headers, week_number, github_api):
-
-    weeks_to_process = range(1, 14) if week_number == 'a' else [
-        int(week_number)]
+    weeks_to_process = range(1, 14) if week_number == 'a' else [int(week_number)]
 
     for week in weeks_to_process:
-        # Check if we already did this
         file_path = f'week_{week}_matchup.json'
         response = github_api.get_file_content(file_path)
 
-        process_current_week = True  # Flag to indicate whether to process the current week
-
-        if response == 404:
-            answer = 'y'
-            pass
-        else:
-            while True:  # Keep looping until a valid answer is given
-                answer = input(
-                    f"[?] Week {week} already on git, process again (Y/n)?: ")
-
-                if 'n' in answer.lower():
-                    process_current_week = False  # Set flag to false if user enters 'n'
-                    break  # Exit the while loop
-                elif 'y' in answer.lower() or not answer:  # Check for 'y' or empty input
-                    answer = 'y'
-                    break  # This will exit the while loop and continue with the rest of the code
-                else:
-                    print("[!] Enter y or n, or simply press enter for 'yes'.")
+        process_current_week = True
+        if response != 404:
+            answer = input(f"[?] Week {week} already on git, process again (Y/n)?: ")
+            process_current_week = answer.lower() != 'n'
 
         if not process_current_week:
             continue
 
         print(f"\n{'-' * 40} Week {week} {'-' * 40}")
-
         matchup_results = []
 
+        # Get team data and handle potential 404
         team_data = github_api.get_file_content('teams_info.json')
+        if isinstance(team_data, int):
+            print("[!] Error: Could not retrieve teams_info.json")
+            return
 
-        for idx, team in enumerate(team_data, start=1):
+        for team in team_data:
             team_key = team["team_key"]
             team_name = team["team_name"]
 
             url = f'{BASE_URL}/team/{team_key}/matchups'
-            response = requests.get(
-                url, headers=headers, params={'format': 'json'})
+            response = requests.get(url, headers=headers, params={'format': 'json'})
+            
             try:
-                post_event = response.json()["fantasy_content"]["team"][1]["matchups"][str(
-                    int(week)-1)]["matchup"]["status"]
+                json_data = response.json()
+                if response.status_code != 200:
+                    print(f"[!] API request failed with status code: {response.status_code}")
+                    print(json.dumps(json_data, indent=2))
+                    continue
+
+                post_event = json_data["fantasy_content"]["team"][1]["matchups"][str(int(week)-1)]["matchup"]["status"]
                 
-            except KeyError:
-                print(json.dumps(response.json(), indent=4))
-                raise KeyError(f"[!] KeyError for json.")
+                if post_event != 'postevent':
+                    print(f"[!] Week {week} is not over yet. Status: {post_event}")
+                    break
 
-            if post_event != 'postevent':
-                print(
-                    f"[!] Week {week} is not over yet. Exiting loop. Status: {post_event}")
-                answer = 'n'
-                break
+                team_points = json_data["fantasy_content"]["team"][1]["matchups"][str(int(week)-1)]["matchup"]["0"]["teams"]["0"]["team"][1]["team_points"]["total"]
+                opponent_points = json_data["fantasy_content"]["team"][1]["matchups"][str(int(week)-1)]["matchup"]["0"]["teams"]["1"]["team"][1]["team_points"]["total"]
+                opponent_name = json_data["fantasy_content"]["team"][1]["matchups"][str(int(week)-1)]["matchup"]["0"]["teams"]["1"]["team"][0][2]["name"]
+                opponent_team_key = json_data["fantasy_content"]["team"][1]["matchups"][str(int(week)-1)]["matchup"]["0"]["teams"]["1"]["team"][0][0]["team_key"]
 
-            team_points = response.json()["fantasy_content"]["team"][1]["matchups"][str(int(week)-1)]["matchup"]["0"]["teams"]["0"]["team"][1]["team_points"]["total"]
-            opponent_points = response.json()["fantasy_content"]["team"][1]["matchups"][str(int(week)-1)]["matchup"]["0"]["teams"]["1"]["team"][1]["team_points"]["total"]
-            opponent_name = response.json()["fantasy_content"]["team"][1]["matchups"][str(int(week)-1)]["matchup"]["0"]["teams"]["1"]["team"][0][2]["name"]
-            opponent_team_key = response.json()["fantasy_content"]["team"][1]["matchups"][str(int(week)-1)]["matchup"]["0"]["teams"]["1"]["team"][0][0]["team_key"]
+                team_exists = any(matchup['team_name'] == team_name or matchup['opponent_name'] == team_name for matchup in matchup_results)
+                opponent_exists = any(matchup['team_name'] == opponent_name or matchup['opponent_name'] == opponent_name for matchup in matchup_results)
 
-            team_exists = any(matchup['team_name'] == team_name or matchup['opponent_name']
-                              == team_name for matchup in matchup_results)
-            opponent_exists = any(
-                matchup['team_name'] == opponent_name or matchup['opponent_name'] == opponent_name for matchup in matchup_results)
+                if not team_exists and not opponent_exists:
+                    if float(team_points) > float(opponent_points):
+                        difference = float(team_points) - float(opponent_points)
+                        margin = str(round(difference, 2))
+                        print(f"\033[32m{team_name} {team_points}\033[0m vs {opponent_name} {opponent_points}\n---> {team_name} wins by: {margin}\n")
+                        winning_team = team_name
+                    elif float(opponent_points) > float(team_points):
+                        difference = float(opponent_points) - float(team_points)
+                        margin = str(round(difference, 2))
+                        print(f"\033[32m{opponent_name} {opponent_points}\033[0m vs {team_name} {team_points}\n---> {opponent_name} wins by: {margin}\n")
+                        winning_team = opponent_name
+                    else:
+                        print(f"\033[31m{team_name} {team_points} vs {opponent_name} {opponent_points}\033[0m\n")
+                        margin = "tie"
+                        winning_team = "tie"
 
-            if not team_exists and not opponent_exists:
-                if float(team_points) > float(opponent_points):
-                    difference = float(team_points) - float(opponent_points)
-                    margin = str(round(difference, 2))
-                    print(
-                        f"\033[32m{team_name} {team_points}\033[0m vs {opponent_name} {opponent_points}\n---> {team_name} wins by: {margin}\n")
-                    winning_team = team_name
-                elif float(opponent_points) > float(team_points):
-                    difference = float(opponent_points) - float(team_points)
-                    margin = str(round(difference, 2))
-                    print(
-                        f"\033[32m{opponent_name} {opponent_points}\033[0m vs {team_name} {team_points}\n---> {opponent_name} wins by: {margin}\n")
-                    winning_team = opponent_name
-                else:
-                    print(
-                        f"\033[31m{team_name} {team_points} vs {opponent_name} {opponent_points}\033[0m\n")
-                    margin = "tie"
-                    winning_team = "tie"
+                    matchup = {
+                        "team_key": team_key,
+                        "team_name": team_name,
+                        "week": str(week),
+                        "team_points": team_points,
+                        "opponent_points": opponent_points,
+                        "opponent_name": opponent_name,
+                        "opponent_team_key": opponent_team_key,
+                        "margin_victory": margin,
+                        "winning_team": winning_team
+                    }
 
-                matchup = {
-                    "team_key": team_key,
-                    "team_name": team_name,
-                    "week": str(week),
-                    "team_points": team_points,
-                    "opponent_points": opponent_points,
-                    "opponent_name": opponent_name,
-                    "opponent_team_key":opponent_team_key,
-                    "margin_victory": margin,
-                    "winning_team": winning_team
-                }
+                    matchup_results.append(matchup)
 
-                matchup_results.append(matchup)
+            except KeyError as e:
+                print(f"[!] KeyError for team {team_name}: {str(e)}")
+                print(json.dumps(json_data, indent=2))
+                continue
+            except Exception as e:
+                print(f"[!] Unexpected error for team {team_name}: {str(e)}")
+                continue
 
-        if 'y' in answer.lower():
+        if matchup_results:
             file_path = f'week_{week}_matchup.json'
-            github_api.post_file_content(
-                file_path, matchup_results, "Update matchup results.")
-
+            github_api.post_file_content(file_path, matchup_results, "Update matchup results.")
 
 def survivor_bonus_gather_data(github_api):
 
