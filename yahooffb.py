@@ -27,39 +27,49 @@ REDIRECT_URI = 'oob'
 SCOPE = 'fspt-r'
 DEBUG = True
 
+def verify_league_access(headers):
+    """Verify access to fantasy league"""
+    url = f'{BASE_URL}/users;use_login=1/games;game_keys=nfl/leagues'
+    print(f"[DEBUG] Checking league access with URL: {url}")
+    print(f"[DEBUG] Headers: {headers}")
+    
+    response = requests.get(url, headers=headers, params={'format': 'json'})
+    if response.status_code != 200:
+        print(f"[!] League access check failed: {response.status_code}")
+        print(json.dumps(response.json(), indent=2))
+        return False
+        
+    data = response.json()
+    print("[DEBUG] League access response:")
+    print(json.dumps(data, indent=2))
+    return True
 
-def get_new_oath_token():
-
-    # Create an OAuth2Session
+def get_new_oauth_token():
     yahoo = OAuth2Session(CLIENT_ID, redirect_uri=REDIRECT_URI, scope=SCOPE)
-
-    # Generate the authorization URL with the scope parameter
     authorization_url, state = yahoo.authorization_url(
         'https://api.login.yahoo.com/oauth2/request_auth')
 
-    print('[*] Please go to the following URL and authorize your application:')
+    print('[*] Please authorize at:')
     print(authorization_url)
-
-    # After the user authorizes your application, they will be presented with an authorization code that they can manually enter into your script.
-    authorization_code = input('[?] Enter the authorization code: ')
-
-    # Fetch the access token using the authorization code
+    
+    authorization_code = input('[?] Enter code: ')
+    
+    print("[DEBUG] Getting token with code:", authorization_code)
     token = yahoo.fetch_token(
         'https://api.login.yahoo.com/oauth2/get_token',
-        code=authorization_code,  # Pass the authorization code here
+        code=authorization_code,
         client_secret=CLIENT_SECRET
     )
-
-    # Close the session when done
-    yahoo.close()
-
-    headers = {'Authorization': f'Bearer {token["access_token"]}',  # Include the access token in the Authorization header
-               }
-
+    
+    print("[DEBUG] Received token:", json.dumps(token, indent=2))
+    
+    headers = {
+        'Authorization': f'Bearer {token["access_token"]}',
+        'Accept': 'application/json'
+    }
+    
     write_json_file('/tmp/access_token.json', headers)
-
     return headers
-
 
 def read_json_file(filename):
     try:
@@ -100,8 +110,8 @@ def get_game_id(headers, github_api):
             file_path, new_content, "Update game_key.")
         return game_key
 
-    print('[*] Getting new token with get_new_oath_token() -> main().')
-    get_new_oath_token()
+    print('[*] Getting new token with get_new_oauth_token() -> main().')
+    get_new_oauth_token()
     main()
 
 
@@ -425,56 +435,56 @@ def print_function_name(myfunction):
 
 
 def main():
-
-    # Github settings to post json files to ffbstorage for centralized data storage
+    # Github settings
     owner = 'cd1zz'
     repo = 'ffbstorage'
 
     try:
         token = os.environ['GITHUB_TOKEN']
     except KeyError:
-        raise EnvironmentError(
-            "[!] The environment variable GITHUB_TOKEN is not set. This is the personal access token from github.")
+        raise EnvironmentError("[!] GITHUB_TOKEN environment variable not set")
 
     github_api = GitHubAPI(owner, repo, token)
-
+    
     headers = read_json_file('/tmp/access_token.json')
     if headers is None:
-        headers = get_new_oath_token()
+        headers = get_new_oauth_token()
+    
+    # Verify league access before proceeding
+    if not verify_league_access(headers):
+        print("[!] Unable to access league. Please verify:")
+        print("1. OAuth scope includes 'fspt-r'")
+        print("2. Access token is valid")
+        print("3. User has access to league 254783")
+        return
 
-    # Get the game ID
+    # Get the game ID and team info
     game_id = get_game_id(headers, github_api)
-
     response = github_api.get_file_content("teams_info.json")
     if response == 404:
         print("[*] 404 getting teams_info.json. Retrieving...")
         get_team_info(game_id, headers, github_api)
 
-    # Ask the user for the week number
-    while True:  # This loop will keep asking until a valid input is given
-        user_input = input(
-            "[?] Enter the week # or 'a' for all (weeks 1-13): ")
+    # Week input handling
+    while True:
+        user_input = input("[?] Enter week # or 'a' for all (weeks 1-13): ")
         try:
-            week = int(user_input)  # This line can throw a ValueError
+            week = int(user_input)
             if 1 <= week <= 13:
-                break  # Exit the loop if the input is valid
-            else:
-                print('[!] Error. Weeks should be 1 - 17 only.')
+                break
+            print('[!] Error. Weeks should be 1 - 17 only.')
         except ValueError:
-            if user_input.lower() == 'a':  # Allow 'a' or 'A' for all weeks
+            if user_input.lower() == 'a':
                 week = 'a'
                 break
-            else:
-                print(
-                    '[!] Error. Please enter a valid integer for the week number or \'a\' for all.')
+            print('[!] Error. Enter valid week number or "a" for all.')
 
+    # Process data
     week = str(week)
     matchup_results(headers, week, github_api)
     calculate_skins_winners(github_api)
     all_matchup_data = survivor_bonus_gather_data(github_api)
-    survivor_bonus_process_season(all_matchup_data,github_api)
+    survivor_bonus_process_season(all_matchup_data, github_api)
     print("[*] Complete!")
-
-
 if __name__ == "__main__":
     main()
