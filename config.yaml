@@ -1,0 +1,31 @@
+# Fantasy Football League Configuration
+
+league:
+  league_id: ""  # Your Yahoo league ID
+
+financial:
+  buy_in: 200.00
+  first_place: 1370.00
+  second_place: 500.00
+  third_place: 200.00
+  survivor_bonus: 100.00
+  high_points_bonus: 100.00
+  skins_weekly_pot: 10.00
+
+game:
+  skins_min_margin: 20.0  # Minimum point margin for skins game
+  #elimination_weeks: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+  survivor_pool_enabled: true
+  skins_game_enabled: true
+
+### Future Options
+#season:
+#  regular_season_weeks: 13
+#  total_season_weeks: 17
+#  playoff_weeks: [14, 15, 16]
+#  num_teams: 12
+
+#api:
+#  base_url: "https://fantasysports.yahooapis.com/fantasy/v2"
+#  timeout: 30  # seconds
+#  max_retries: 3
